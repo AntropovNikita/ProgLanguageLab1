@@ -1,8 +1,13 @@
+global exit, string_length, print_string, print_char, print_newline
+global print_uint, print_int, string_equals, read_char, read_word
+global parse_uint, parse_int, string_copy
+
 section .text
 ; Принимает код возврата и завершает текущий процесс
+; @param rdi Код возврата
 exit: 
     mov rax, 60
-    xor rdi, rdi
+    ;xor rdi, rdi
     syscall
 
 ; Принимает указатель на нуль-терминированную строку, возвращает её длину

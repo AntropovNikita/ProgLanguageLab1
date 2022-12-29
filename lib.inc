@@ -1,3 +1,11 @@
+%define exit_call 60
+%define write_call 1
+%define read_call 0
+
+%define stdin 0
+%define stdout 1
+%define stderr 2
+
 global exit, string_length, print_string, print_char, print_newline
 global print_uint, print_int, string_equals, read_char, read_word
 global parse_uint, parse_int, string_copy
@@ -6,7 +14,7 @@ section .text
 ; Принимает код возврата и завершает текущий процесс
 ; @param rdi Код возврата
 exit: 
-    mov rax, 60
+    mov rax, exit_call
     ;xor rdi, rdi
     syscall
 
@@ -17,9 +25,9 @@ string_length:
     xor rax, rax              ; Обнуление счетчика
     
     .loop:
-    	cmp byte[rdi+rax], 0  ; Сравнение следующего символа с символом конца строки
-    	je .end               ; Если равно, то перейти к концу
-    	inc rax               ; Иначе увеличить счетки на 1
+    	cmp byte[rdi+rax], `\0` ; Сравнение следующего символа с символом конца строки
+    	je .end                 ; Если равно, то перейти к концу
+    	inc rax                 ; Иначе увеличить счетки на 1
     	jmp .loop             
     	
     .end:
@@ -34,12 +42,16 @@ print_string:
    
     mov rsi, rdi       ; Вывод строки в stdout
     mov rdx, rax
-    mov rax, 1
-    mov rdi, 1
+    mov rax, write_call
+    mov rdi, stdout
     syscall
     
     ret
-     
+
+; Переводит строку
+print_newline:
+    mov rdi, `\n`; Вывод символа \n в stdout
+   
 ; Принимает код символа и выводит его в stdout
 ; @param rdi Код символа в кодировке ASCII  
 print_char:
@@ -47,28 +59,37 @@ print_char:
     
     mov rsi, rsp ; Вывод символа в stdout
     mov rdx, 1
-    mov rax, 1
-    mov rdi, 1
+    mov rax, write_call
+    mov rdi, stdout
     syscall
     
     pop rdi      ; Очищение стека от локальных данных
     ret
     
-; Переводит строку
-print_newline:
-    mov rdi, 0x0A        ; Вывод символа \n в stdout, caller-регистры не сохраняются, 
-    call print_char     ; так как дальше в функции их начальные значения не используются
+; Выводит знаковое 8-байтовое число в десятичном формате
+; @param rdi Целое знаковое число
+print_int:
+    cmp rdi, 0              ; Если число больше 0, то
+    jns .pos_num            ; перейти к метке вывода беззнакового числа
+         
+    .neg_num:               ; Вывод отрицательного числа в stdout
+        push rdi            ; Сохранение caller-регистра перед вызовом функции       
+        mov rdi, `-`        ; Вывод символа - в stdout
+        call print_char     
+        pop rdi             ; Восстановление caller-регистра
+        
+        neg rdi             ; Преобразование числа в беззнаковое
 
-    ret
-    
-; Выводит беззнаковое 8-байтовое число в десятичном формате 
+    .pos_num:               ; Вызов функции вывода беззнакового числа в stdout
+
+ ; Выводит беззнаковое 8-байтовое число в десятичном формате 
 ; @param rdi Целое беззнаковое число
 print_uint:
     push r13              ; Сохранение callee-регистров перед изменением
     push r12
     
     mov r12, rsp          ; Помещение символа конца строки в стеке
-    push 0x00
+    push `\0`
     
     mov r13, 10           ; Константа для деления
     mov rax, rdi    
@@ -90,25 +111,6 @@ print_uint:
     pop r12               ; Восстановление callee-регистров
     pop r13
     
-    ret
-    
-; Выводит знаковое 8-байтовое число в десятичном формате
-; @param rdi Целое знаковое число
-print_int:
-    cmp rdi, 0              ; Если число больше 0, то
-    jns .pos_num            ; перейти к метке вывода беззнакового числа
-         
-    .neg_num:               ; Вывод отрицательного числа в stdout
-        push rdi            ; Сохранение caller-регистра перед вызовом функции       
-        mov rdi, 0x2D       ; Вывод символа - в stdout
-        call print_char     
-        pop rdi             ; Восстановление caller-регистра
-        
-        neg rdi             ; Преобразование числа в беззнаковое
-
-    .pos_num:               ; Вызов функции вывода беззнакового числа в stdout
-        call print_uint     ; Сохранение caller-регистров не производится, так как
-                            ; дальше в функции их начальные значения не используются  
     ret
 
 ; Принимает два указателя на нуль-терминированные строки, возвращает 1 если они равны, 0 иначе
@@ -153,10 +155,10 @@ string_equals:
 ; Читает один символ из stdin и возвращает его. Возвращает 0 если достигнут конец потока
 ; @return rax Код символа в кодировке ASCII или 0
 read_char:
-    push 0x0     ; Помещение возвращаемого значения в стек
+    push 0x0           ; Помещение возвращаемого значения в стек
      
-    mov rax, 0   ; Чтение символа из stdin в стек
-    mov rdi, 0
+    mov rax, read_call ; Чтение символа из stdin в стек
+    mov rdi, stdin
     mov rdx, 1
     mov rsi, rsp
     syscall
@@ -184,15 +186,15 @@ read_word:
         pop rsi
         pop rdi
         
-        cmp al, 0x00              ; Если символ равен символу конца строки, то
+        cmp al, `\0`              ; Если символ равен символу конца строки, то
         je .is_end                ; выйти из цикла
         cmp al, 0x04              ; Если символ равен символу конца передачи данных, то
         je .is_end                ; выйти из цикла
-        cmp al, 0x20              ; Если символ равен space, то
+        cmp al, ` `               ; Если символ равен space, то
         je .is_space              ; перейти к выбору действия
-        cmp al, 0x0A              ; Если символ равен \n, то
+        cmp al, `\n`              ; Если символ равен \n, то
         je .is_space              ; перейти к выбору действия
-        cmp al, 0x09              ; Если символ равен \t, то
+        cmp al, `\t`              ; Если символ равен \t, то
         je .is_space              ; перейти к выбору действия
         
         mov byte[rdi + rdx], al   ; Сохранение прочитанного символа в буфер
@@ -206,7 +208,7 @@ read_word:
         jmp .is_end               ; иначе выйти из цикла
    
     .is_end:                      ; Конец чтения
-        mov byte[rdi + rdx], 0x00 ; Помещение символа конца строки в буфер
+        mov byte[rdi + rdx], `\0` ; Помещение символа конца строки в буфер
         mov rax, rdi              
         ret
         
@@ -268,7 +270,7 @@ parse_int:
     xor rax, rax
     .check_num:
         mov al, byte[rdi] ; Проверка первого символа в строке
-        cmp al, 0x2D      ; Если символ не равен -, то
+        cmp al, `-`       ; Если символ не равен -, то
         jne .parse_num    ; перейти к парсингу числа 
         
         inc rdi           ; Сдвиг к следующему символу

@@ -1,8 +1,8 @@
-%define exit_call 60
+%define exit_call 60 ; Коды системных вызовов
 %define write_call 1
 %define read_call 0
 
-%define stdin 0
+%define stdin 0  ; Стандартные дескрипторы
 %define stdout 1
 %define stderr 2
 
